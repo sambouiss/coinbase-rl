@@ -1,0 +1,9 @@
+API_KEY = "pass"
+API_SECRET = "pass"
+API_PASS = "pass"
+api_url = "https://api.pro.coinbase.com/"
+api_url_sb = "https://api-public.sandbox.pro.coinbase.com/"
+API_SECRET_SB = "pass"
+API_PASS_SB = "pass"
+API_KEY_SB = "pass"
+USE_SANDBOX = False
