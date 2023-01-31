@@ -26,11 +26,11 @@ else:
 if __name__ == "main":
     api = coinbase_api.CoinbaseAPI(api_url, API_KEY, API_SECRET, API_PASS)
     session_length = 60 * 60
-    startTime = datetime.datetime.now()
-    endTime = startTime + datetime.timedelta(seconds=session_length)
+    start_time = datetime.datetime.now()
+    end_time = start_time + datetime.timedelta(seconds=session_length)
     products = ["AMP-USD"]
     env = Env.Enviroment(
-        startTime, endTime, api, products, session_length=session_length
+        start_time, end_time, api, products, session_length=session_length
     )
     state_dim = (len(products), 7)
     action_dim = (len(products), 2)
