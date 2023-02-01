@@ -1,32 +1,20 @@
 import pytest
 from environment.Env import Environment
-from exchange_api.coinbase_api import ExchangeAPI, BalanceSpec
+from environment.test_utils import TestApi
 from datetime import datetime,timedelta
-
-class TestApi(ExchangeAPI):
-    def __init__(self) -> None:
-        self.available = self.balance = {
-            "USD": 1.0,
-            "BTC": 1.0
-            }
-        
-    def updateAvail(self) -> None:
-        return
-    
-    def updateBalance(self) -> None:
-        return
+from typing import List
 
 class TestEnv:
 
-    def __init__(self):
-        api = self.test_api = self.getTestApi()
+    def getTestApi(self) -> TestApi:
+        return TestApi()
+
+    def getTestEnv(self) -> Environment:
+        api = self.getTestApi()
         start_time = datetime.now()
         end_time = start_time + timedelta(hours = 1)
-        products = ["ABC"]
-        
-        self.env = Environment(start_time, end_time, api, products)
-    def getTestApi(self) -> TestApi:
-        pass
+        products = ["BTC"]
+        return Environment(start_time, end_time, api, products)
 
     def testSetup(self) -> None:
         """
@@ -35,7 +23,7 @@ class TestEnv:
         but for now I will just say what I expect the test to do. 
         """
 
-        env = self.env
+        env = self.getTestEnv()
 
         expected_state = [[0.0  for _ in range(7)]]
 
@@ -48,7 +36,7 @@ class TestEnv:
         Step should return state, reward and done.
         Probably also need to clean up this method. 
         """
-        env = self.env 
+        env = self.getTestEnv()
 
         expected_state = [[0.0  for _ in range(7)]]
 
@@ -69,7 +57,7 @@ class TestEnv:
         Given a set of actions act should delegate the actions to their respective
         product features.
         """
-        env = self.env
+        env = self.getTestEnv()
 
         actions = [[0.0, 0.0]]
 
