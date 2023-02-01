@@ -1,5 +1,4 @@
-from pathlib import Path
-import datetime
+from datetime import datetime
 import torch
 from collections import deque
 
@@ -13,7 +12,10 @@ import torch
 
 class Enviroment:
     def __init__(
-        self, start_time, end_time, api, products, session_length=3600, penalty=0.005
+        self, 
+        start_time: datetime, 
+        end_time: datetime, 
+        api, products, session_length=3600, penalty=0.005
     ):
         self.start_time = start_time
         self.end_time = end_time
@@ -31,7 +33,9 @@ class Enviroment:
     def setup_env(self):
         self.api.updateAvail()
         self.api.updateBalance()
+
         fees = self.api.getFees()
+
         maker_fee = float(fees["maker_fee_rate"])
         taker_fee = float(fees["taker_fee_rate"])
 
@@ -44,11 +48,11 @@ class Enviroment:
 
             productFeatures = ProductFeatures(
                 product,
-                api,
+                self.api,
                 maker_fee,
                 taker_fee,
                 self.start_time,
-                sessionLength=self.session_length,
+                session_length=self.session_length,
             )
 
             self.product_features[product] = productFeatures
@@ -59,10 +63,10 @@ class Enviroment:
 
             self.old_total += sellPos
 
-            productState = productFeatures.getProductFeatures()
+            product_state = productFeatures.getProductFeatures()
 
-            state[item] = productState[::]
-        self.startingTotal = self.old_total
+            state[item] = product_state[::]
+        self.starting_total = self.old_total
         return state
 
     def stepEnv(self):
@@ -73,19 +77,19 @@ class Enviroment:
             fees["taker_fee_rate"]
         )
 
-        newUpdateTime = datetime.datetime.now()
+        new_update_time = datetime.datetime.now()
         done = 0
 
-        if (newUpdateTime - self.start_time).total_seconds() > self.session_length:
+        if (new_update_time - self.start_time).total_seconds() > self.session_length:
             done = 1
 
         timeDelta = (
-            newUpdateTime - self.last_update_time
+            new_update_time - self.last_update_time
         ).total_seconds() / self.session_length
         state = [[] for _ in range(len(self.products))]
 
         reward = [0 for i in range(len(self.products))]
-        newTotal = self.api.balance["USD"]
+        new_total = self.api.balance["USD"]
         flag = False
         if timeDelta * self.session_length > 180:
             flag = True
@@ -96,24 +100,24 @@ class Enviroment:
             productFeatures = self.product_features[product]
 
             new_state, posPnl, can_update = productFeatures.update(
-                maker_fee, taker_fee, newUpdateTime, api
+                maker_fee, taker_fee, new_update_time, self.api
             )
             flag = flag or can_update
             self.product_features[product] = productFeatures
             self.pos_pnl = posPnl * self.gamma + (1 - self.gamma) * self.pos_pnl
-            newTotal += (
+            new_total += (
                 productFeatures.sellBalance
                 * productFeatures.mid_point
                 * productFeatures.bot_price
             )
             state[item] = new_state[::]
 
-        self.last_update_time = newUpdateTime
+        self.last_update_time = new_update_time
         n = len(self.products)
-        log_returns = np.log(newTotal) - np.log(self.old_total)
+        log_returns = np.log(new_total) - np.log(self.old_total)
         reward = log_returns - posPnl
 
-        self.old_total = newTotal
+        self.old_total = new_total
 
         return state, [reward for _ in range(n)], [done for _ in range(n)]
 
@@ -130,14 +134,7 @@ class Enviroment:
 
 class ProductFeatures:
     def __init__(
-        self,
-        product,
-        api,
-        maker_fee,
-        taker_fee,
-        start_time,
-        gamma=0.9,
-        session_length=3600,
+        self, product, api, maker_fee, taker_fee, start_time, gamma=0.9, session_length=3600
     ):
         self.gamma = gamma
         self.rho = 0.3
@@ -164,7 +161,7 @@ class ProductFeatures:
         self.time_remaining = self.session_length = session_length
         self.lamb = 0
         self.positional_pnl = None
-        self.ewmaVar = 0
+        self.ewma_var = 0
         self.orders = deque()
         self.vwop_bid = 0
         self.vwop_ask = 0
@@ -197,18 +194,18 @@ class ProductFeatures:
             self.avg_price = mid_point
             self.trading_volume = 0
 
-        self.ewmaVar = (
-            self.rho * (mid_point - self.avg_price) ** 2 + (1 - self.rho) * self.ewmaVar
+        self.ewma_var = (
+            self.rho * (mid_point - self.avg_price) ** 2 + (1 - self.rho) * self.ewma_var
         )
 
-        bidVol, askVol = sum(float(bids[i][1]) for i in range(len(bids))), sum(
+        bid_vol, ask_vol = sum(float(bids[i][1]) for i in range(len(bids))), sum(
             float(asks[i][1]) for i in range(len(asks))
         )
         if self.bid_vol is None:
-            self.bid_vol = bidVol
-            self.ask_vol = askVol
-        self.bid_vol = self.rho * bidVol + (1 - self.rho) * self.bid_vol
-        self.ask_vol = self.rho * askVol + (1 - self.rho) * self.ask_vol
+            self.bid_vol = bid_vol
+            self.ask_vol = ask_vol
+        self.bid_vol = self.rho * bid_vol + (1 - self.rho) * self.bid_vol
+        self.ask_vol = self.rho * ask_vol + (1 - self.rho) * self.ask_vol
         if self.base is None:
             base, quote = api.getBaseQuote(self.product)
             self.base = base
@@ -221,9 +218,7 @@ class ProductFeatures:
         self.buy_balance, self.sell_balance = api.balance[p2], api.balance[p1]
         self.buy_size, self.sell_size = api.available[p2], api.available[p1]
         if self.positional_pnl is None:
-            self.positional_pnl = (
-                self.mid_point
-            ) * self.sell_balance + self.buy_balance
+            self.positional_pnl = (self.mid_point) * self.sell_balance + self.buy_balance
         old_pnl = self.positional_pnl
         self.positional_pnl = (self.mid_point) * self.sell_balance + self.buy_balance
         if p2 == "USD":
@@ -314,36 +309,50 @@ class ProductFeatures:
         return bids, asks
 
     def getProductFeatures(self):
-        midPrice = self.mid_point
+        mid_point = self.mid_point
         bot_price = self.bot_price
-        normalized_bid_vol = self.bid_vol * (midPrice * bot_price)
-        normalized_ask_vol = self.ask_vol * (midPrice * bot_price)
+
+        normalized_bid_vol = self.bid_vol * (mid_point * bot_price)
+        normalized_ask_vol = self.ask_vol * (mid_point * bot_price)
+
         normalized_buy_size = self.buy_size * (bot_price)
-        normalized_sell_size = self.sell_size * (midPrice * bot_price)
+        normalized_sell_size = self.sell_size * (mid_point * bot_price)
+
         nomralized_buy_balance = self.buy_balance * (bot_price)
-        normalized_sell_balance = self.sell_balance * (midPrice * bot_price)
+        normalized_sell_balance = self.sell_balance * (mid_point * bot_price)
+
+        starting_point = self.starting_point
 
         normalized_time_remaining = self.time_remaining / self.session_length
-        bid_dispersion = float(self.vwop_bid) * (
-            nomralized_buy_balance - normalized_buy_size
-        )
-        ask_dispersion = float(self.vwop_ask) * (
-            normalized_sell_balance - normalized_sell_size
-        )
-        ord_dis = (bid_dispersion - ask_dispersion) / (
-            nomralized_buy_balance + normalized_sell_balance
-        )
-        position = nomralized_buy_balance - normalized_sell_balance
-        position /= nomralized_buy_balance + normalized_sell_balance
 
-        order_imbalance = normalized_ask_vol - normalized_bid_vol
-        order_imbalance /= normalized_bid_vol + normalized_ask_vol
+        bid_dispersion = float(self.vwop_bid) * (nomralized_buy_balance - normalized_buy_size)
+        ask_dispersion = float(self.vwop_ask) * (normalized_sell_balance - normalized_sell_size)
+
+        ord_dispersion = (bid_dispersion - ask_dispersion) 
+        ord_dispersion /= nomralized_buy_balance + normalized_sell_balance
+        
+
+        position =  10 * (nomralized_buy_balance - normalized_sell_balance)
+        position /= (nomralized_buy_balance + normalized_sell_balance)
+
+        order_imbalance = (normalized_ask_vol - normalized_bid_vol)
+        order_imbalance /= (normalized_bid_vol + normalized_ask_vol)
+
+        price_dispersion =  100 * 100 * (mid_point - self.avg_price)  
+        price_dispersion /= starting_point 
+
+        ewma_dispersion = 100 * 100 * (self.ewma - self.avg_price)
+        ewma_dispersion /= starting_point
+        
+        normalized_var =  100 * 100 * (self.ewma_var)
+        normalized_var /= (starting_point * starting_point)
+        
         out = [
-            100 * 100 * (midPrice - self.avg_price) / self.startingPoint,
-            10 * position,
-            ord_dis,
-            100 * 100 * (self.ewma - self.avg_price) / self.startingPoint,
-            100 * 100 * (self.ewmaVar) / (self.startingPoint * self.startingPoint),
+            price_dispersion,
+            position,
+            ord_dispersion,
+            ewma_dispersion,
+            100 * 100 * (self.ewma_var) / (self.startingPoint * self.startingPoint),
             10 * normalized_time_remaining,
             10 * order_imbalance,
         ]
