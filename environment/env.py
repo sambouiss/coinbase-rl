@@ -1,22 +1,30 @@
 from datetime import datetime
 import torch
 from collections import deque
-
-
+from typing import List
+from exchange_api.coinbase_api import ExchangeAPI
 import numpy as np
 
 useSandBox = False
 
 import torch
 
+State = List[float]
 
-class Enviroment:
+"""
+I think the dependence of environment on product features kinda points to an issue with
+design that I need to fix.
+"""
+class Environment:
     def __init__(
         self, 
         start_time: datetime, 
         end_time: datetime, 
-        api, products, session_length=3600, penalty=0.005
-    ):
+        api: ExchangeAPI, 
+        products: str, 
+        session_length: int = 3600, 
+        penalty: float = 0.005
+    ) -> None:
         self.start_time = start_time
         self.end_time = end_time
         self.api = api
@@ -30,7 +38,7 @@ class Enviroment:
         self.gamma = 0.3
         self.pos_pnl = 0
 
-    def setup_env(self):
+    def setup(self) -> List[State]:
         self.api.updateAvail()
         self.api.updateBalance()
 
@@ -69,7 +77,7 @@ class Enviroment:
         self.starting_total = self.old_total
         return state
 
-    def stepEnv(self):
+    def step(self):
         self.api.updateAvail()
         self.api.updateBalance()
         fees = self.api.getFees()
