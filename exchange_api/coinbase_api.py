@@ -45,7 +45,7 @@ class ExchangeAPI(ABC):
         pass
     
     @abstractmethod
-    def getBaseQuote(self, product: str) -> Tuple(float, float):
+    def getBaseQuote(self, product: str) -> object:
         pass
 
     @abstractmethod
