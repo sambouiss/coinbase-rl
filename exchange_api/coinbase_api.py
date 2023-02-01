@@ -2,10 +2,85 @@ import requests
 import math
 import json, hmac, hashlib, time, requests, base64
 from requests.auth import AuthBase
+from abc import ABC, abstractmethod
+from typing import Dict, List, Tuple
+from typing_extensions import TypedDict
+
+BalanceSpec = Dict[str, float]
+
+OrderSpec = Dict[str, str]
+
+class ExchangeAPI(ABC):
+
+    @abstractmethod
+    def getAvail(self) -> BalanceSpec:
+        pass
+
+    @abstractmethod
+    def getBalance(self) -> BalanceSpec:
+        pass
+    
+    @abstractmethod
+    def placeOrder(self, size: float, price: float, side: str, product: str) -> OrderSpec:
+        pass
+    
+    @abstractmethod
+    def cancelAllOrders(self) -> List[str]:
+       pass
+
+    @abstractmethod
+    def getOrderBook(self, product: str, level: int) -> object:
+        """
+        Object is a place holder will worry about this later.
+        I just wanna define this so I can work on tests.
+        """
+        pass
+
+    @abstractmethod
+    def getHistoric(self, product: str, granularity: int, start: str, end: str) -> object:
+        """
+        Object is a place holder will worry about this later.
+        I just wanna define this so I can work on tests.
+        """
+        pass
+    
+    @abstractmethod
+    def getBaseQuote(self, product: str) -> Tuple(float, float):
+        pass
+
+    @abstractmethod
+    def getTrades(self, product: str) -> object:
+        """
+        Object is a place holder will worry about this later.
+        I just wanna define this so I can work on tests.
+        """
+        pass
+    
+    @abstractmethod
+    def cancelOrder(self, order: str) -> object:
+        """
+        Object is a place holder will worry about this later.
+        I just wanna define this so I can work on tests.
+        """
+        pass
+
+    @abstractmethod
+    def getFills(self, product: str, before: int) -> object:
+        """
+        Object is a place holder will worry about this later.
+        I just wanna define this so I can work on tests.
+        """
+        pass
+    
+    @abstractmethod
+    def getProductNames(self) -> List[str]:
+        pass
+
+    @abstractmethod
+    def getFees(self) -> object:
+        pass
 
 # Create custom authentication for Exchange
-
-
 class CoinbaseExchangeAuth(AuthBase):
     def __init__(self, api_key, secret_key, passphrase):
         self.api_key = api_key
@@ -37,7 +112,8 @@ class CoinbaseExchangeAuth(AuthBase):
         return request
 
 
-class CoinbaseAPI:
+class CoinbaseAPI(ExchangeAPI):
+    
     def __init__(self, api_url, api_key, secret_key, passphrase):
         self.api_url = api_url
         self.auth = CoinbaseExchangeAuth(api_key, secret_key, passphrase)
