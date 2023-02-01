@@ -71,4 +71,10 @@ class TestEnv:
 
 class TestProductFeatures:
 
-    pass
+    def testUpdate(self) -> None:
+        pass
+    
+    def testGetProductState(self) -> None:
+        pass
+    
+    
