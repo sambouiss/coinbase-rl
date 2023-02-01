@@ -303,7 +303,7 @@ class ProductFeatures:
         self.starting_cash = self.starting_stock = new_total / 2
         return self.getProductFeatures(), np.log(new_total) - np.log(old_total), flag
 
-    def get_bid_ask(self, product, depth=None):
+    def getBidAsk(self, product, depth=None):
 
         book = self.api.getOrderBook(product)
 
@@ -316,7 +316,7 @@ class ProductFeatures:
 
         return bids, asks
 
-    def getProductFeatures(self):
+    def getProductState(self):
         mid_point = self.mid_point
         bot_price = self.bot_price
 
@@ -360,7 +360,7 @@ class ProductFeatures:
             position,
             ord_dispersion,
             ewma_dispersion,
-            100 * 100 * (self.ewma_var) / (self.startingPoint * self.startingPoint),
+            normalized_var,
             10 * normalized_time_remaining,
             10 * order_imbalance,
         ]

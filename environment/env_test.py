@@ -1,5 +1,5 @@
 import pytest
-from environment.Env import Environment
+from environment.Env import Environment, ProductFeatures
 from environment.test_utils import TestApi
 from datetime import datetime,timedelta
 from typing import List
@@ -7,10 +7,16 @@ from typing import List
 class TestEnv:
 
     def getTestApi(self) -> TestApi:
+        """
+        Returns:
+            TestApi: _description_
+            
+        I guess this is unnecessary cause I can just call the constructor as need.
+        """
         return TestApi()
 
     def getTestEnv(self) -> Environment:
-        api = self.getTestApi()
+        api = self.getTestApi() 
         start_time = datetime.now()
         end_time = start_time + timedelta(hours = 1)
         products = ["BTC"]
