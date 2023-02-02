@@ -1,7 +1,7 @@
 import datetime
 import config
-from agent.Agent import Agent, MetricLogger
-from environment.Env import Environment
+from agent.agent import Agent, MetricLogger
+from environment.env import Environment
 from exchange_api.coinbase_api import CoinbaseAPI
 import torch
 from pathlib import Path

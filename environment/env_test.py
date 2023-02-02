@@ -1,5 +1,5 @@
 import pytest
-from environment.Env import Environment, ProductFeatures
+from environment.env import Environment, ProductFeatures
 from environment.test_utils import TestApi
 from datetime import datetime,timedelta
 from typing import List
