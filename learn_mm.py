@@ -1,8 +1,8 @@
 import datetime
 import config
-from agent import Agent
-from environment import Env
-from exchange_api import coinbase_api
+from agent.Agent import Agent, MetricLogger
+from environment.Env import Environment
+from exchange_api.coinbase_api import CoinbaseAPI
 import torch
 from pathlib import Path
 import time
@@ -23,13 +23,13 @@ else:
     API_SECRET = config.API_SECRET
     API_PASS = config.API_PASS
 
-if __name__ == "main":
-    api = coinbase_api.CoinbaseAPI(api_url, API_KEY, API_SECRET, API_PASS)
+if __name__ == "__main__":
+    api = CoinbaseAPI(api_url, API_KEY, API_SECRET, API_PASS)
     session_length = 60 * 60
     start_time = datetime.datetime.now()
     end_time = start_time + datetime.timedelta(seconds=session_length)
     products = ["AMP-USD"]
-    env = Env.Enviroment(
+    env = Environment(
         start_time, end_time, api, products, session_length=session_length
     )
     state_dim = (len(products), 7)
@@ -42,7 +42,7 @@ if __name__ == "main":
         "%Y-%m-%dT%H-%M-%S"
     )
     save_dir.mkdir(parents=True)
-    agent = Agent.Agent(state_dim, action_dim, save_dir)
+    agent = Agent(state_dim, action_dim, save_dir)
 
     checkpoint = None
     if checkpoint is not None:
@@ -55,7 +55,7 @@ if __name__ == "main":
         agent.actor_swa.load_state_dict(checkpoint["actor_swa"])
         agent.critic_swa.load_state_dict(checkpoint["critic_swa"])
 
-    logger = Agent.MetricLogger(save_dir)
+    logger = MetricLogger(save_dir)
 
     episodes = 100
     for e in range(episodes):
@@ -65,9 +65,9 @@ if __name__ == "main":
                 pass
 
             try:
-                state = env.setup_env()
+                state = env.setup()
             except:
-                state = env.setup_env()
+                state = env.setup()
 
             while True:
                 print(state)
@@ -76,10 +76,10 @@ if __name__ == "main":
                 env.act(action)
                 time.sleep(0.5)
                 try:
-                    next_state, reward, done = env.stepEnv()
+                    next_state, reward, done = env.step()
                 except:
                     time.sleep(0.5)
-                    next_state, reward, done = env.stepEnv()
+                    next_state, reward, done = env.step()
 
                 agent.cache(state, next_state, action, reward, done)
 

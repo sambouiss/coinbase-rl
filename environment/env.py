@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import datetime,timedelta
 import torch
 from collections import deque
-from typing import List
-from exchange_api.coinbase_api import ExchangeAPI
+from typing import List, NamedTuple, Tuple
+from exchange_api.coinbase_api import CoinbaseAPI
 import numpy as np
+from abc import ABC, abstractmethod, abstractproperty
 
 useSandBox = False
 
@@ -14,141 +15,27 @@ State = List[float]
 """
 I think the dependence of environment on product features kinda points to an issue with
 design that I need to fix.
+
+I think in the long run maybe using wrappers to make it so api info is accessed in a uniform
+would be a good improvement.
 """
-class Environment:
-    def __init__(
-        self, 
-        start_time: datetime, 
-        end_time: datetime, 
-        api: ExchangeAPI, 
-        products: str, 
-        session_length: int = 3600, 
-        penalty: float = 0.005
-    ) -> None:
-        self.start_time = start_time
-        self.end_time = end_time
-        self.api = api
-        self.products = products
-        self.product_mapping = {product: i for i, product in enumerate(products)}
-        self.product_features = {}
-        self.penalty = penalty
-        self.session_length = session_length
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.old_total = 0
-        self.gamma = 0.3
-        self.pos_pnl = 0
-
-    def setup(self) -> List[State]:
-        self.api.updateAvail()
-        self.api.updateBalance()
-
-        fees = self.api.getFees()
-
-        maker_fee = float(fees["maker_fee_rate"])
-        taker_fee = float(fees["taker_fee_rate"])
-
-        self.start_time = self.last_update_time = datetime.datetime.now()
-        self.end_time
-        state = [[] for _ in range(len(self.products))]
-        self.old_total = self.api.balance["USD"]
-        for item in np.random.permutation(len(self.products)):
-            product = self.products[item]
-
-            productFeatures = ProductFeatures(
-                product,
-                self.api,
-                maker_fee,
-                taker_fee,
-                self.start_time,
-                session_length=self.session_length,
-            )
-
-            self.product_features[product] = productFeatures
-
-            sellPos = productFeatures.sell_balance * (
-                productFeatures.mid_point * productFeatures.bot_price
-            )
-
-            self.old_total += sellPos
-
-            product_state = productFeatures.getProductFeatures()
-
-            state[item] = product_state[::]
-        self.starting_total = self.old_total
-        return state
-
-    def step(self):
-        self.api.updateAvail()
-        self.api.updateBalance()
-        fees = self.api.getFees()
-        maker_fee, taker_fee = float(fees["maker_fee_rate"]), float(
-            fees["taker_fee_rate"]
-        )
-
-        new_update_time = datetime.datetime.now()
-        done = 0
-
-        if (new_update_time - self.start_time).total_seconds() > self.session_length:
-            done = 1
-
-        timeDelta = (
-            new_update_time - self.last_update_time
-        ).total_seconds() / self.session_length
-        state = [[] for _ in range(len(self.products))]
-
-        reward = [0 for i in range(len(self.products))]
-        new_total = self.api.balance["USD"]
-        flag = False
-        if timeDelta * self.session_length > 180:
-            flag = True
-
-        for item in np.random.permutation(len(self.products)):
-            product = self.products[item]
-
-            productFeatures = self.product_features[product]
-
-            new_state, posPnl, can_update = productFeatures.update(
-                maker_fee, taker_fee, new_update_time, self.api
-            )
-            flag = flag or can_update
-            self.product_features[product] = productFeatures
-            self.pos_pnl = posPnl * self.gamma + (1 - self.gamma) * self.pos_pnl
-            new_total += (
-                productFeatures.sellBalance
-                * productFeatures.mid_point
-                * productFeatures.bot_price
-            )
-            state[item] = new_state[::]
-
-        self.last_update_time = new_update_time
-        n = len(self.products)
-        log_returns = np.log(new_total) - np.log(self.old_total)
-        reward = log_returns - posPnl
-
-        self.old_total = new_total
-
-        return state, [reward for _ in range(n)], [done for _ in range(n)]
-
-    def act(self, actions):
-
-        for i, action in enumerate(actions):
-
-            product = self.products[i]
-
-            productFeatues = self.product_features[product]
-
-            productFeatues.act(action)
-
-
 class ProductFeatures:
     def __init__(
-        self, product, api, maker_fee, taker_fee, start_time, gamma=0.9, session_length=3600
-    ):
+        self, 
+        product: str, 
+        api: CoinbaseAPI, 
+        maker_fee: float, 
+        taker_fee: float,
+        start_time: datetime, 
+        gamma: float=0.9, 
+        session_length: int=3600
+    ) -> None:
         self.gamma = gamma
         self.rho = 0.3
         self.api = None
         self.product = product
-        self.ewma = self.mid_point = None
+        self.ewma = None
+        self.mid_point = None
         self.bid_vol = None
         self.ask_vol = None
         self.buy_size = None
@@ -166,7 +53,8 @@ class ProductFeatures:
         self.avg_price = None
         self.trading_volume = None
         self.end_time = self.start_time + datetime.timedelta(seconds=session_length)
-        self.time_remaining = self.session_length = session_length
+        self.time_remaining = session_length
+        self.session_length = session_length
         self.lamb = 0
         self.positional_pnl = None
         self.ewma_var = 0
@@ -177,20 +65,27 @@ class ProductFeatures:
         self.starting_stock = 0.5
         self.update(maker_fee, taker_fee, start_time, api)
 
-    def update(self, maker_fee, taker_fee, update_time, api):
+    def update(self, maker_fee, taker_fee, update_time, api, set_start_time = False):
+        if set_start_time:
+            self.start_time = datetime.now()
+            self.end_time = self.start_time+timedelta(seconds=self.session_length)
         p1, p2 = self.product.split("-")
         self.api = api
         self.maker_fee = maker_fee
         self.taker_fee = taker_fee
-        bids, asks = self.get_bid_ask(self.product, 3)
+        bids, asks = self.getBidAsk(3)
         best_bid, best_ask = float(bids[0][0]), float(asks[0][0])
         if self.mid_point is None:
-            self.starting_price = old_mid_point = mid_point = self.mid_point = (
+            mid_point = (
                 best_ask + best_bid
             ) / 2
+            old_mid_point = mid_point
+            self.starting_price = mid_point
+            self.mid_point = mid_point
         else:
+            mid_point = (best_ask + best_bid) / 2
             old_mid_point = self.mid_point
-            mid_point = self.mid_point = (best_ask + best_bid) / 2
+            self.mid_point = mid_point
         self.update_time = update_time
         self.time_remaining = (self.end_time - update_time).total_seconds()
         if self.ewma is None:
@@ -236,9 +131,7 @@ class ProductFeatures:
             bot_bid, bot_ask = float(bot_bid[0][0]), float(bot_ask[0][0])
             bot_price = (bot_bid + bot_ask) / 2
         self.bot_price = bot_price
-        flag = False
-        if not self.orders:
-            flag = True
+        
 
         sell_vol = 0
         buy_vol = 0
@@ -260,7 +153,7 @@ class ProductFeatures:
                 price = float(r["executed_value"]) / volume_top
                 val = float(r["executed_value"]) * bot_price
                 fee = float(r["fill_fees"])
-                flag = True
+                
                 quoted_val = float(r["price"])
                 quoted_size = float(r["size"])
                 if r["side"] == "buy":
@@ -301,11 +194,11 @@ class ProductFeatures:
         old_total = self.starting_cash + self.starting_stock
         new_total = self.starting_stock * mid_point / old_mid_point + self.starting_cash
         self.starting_cash = self.starting_stock = new_total / 2
-        return self.getProductFeatures(), np.log(new_total) - np.log(old_total), flag
+        return self.getProductState(), np.log(new_total) - np.log(old_total)
 
-    def getBidAsk(self, product, depth=None):
+    def getBidAsk(self, depth=None):
 
-        book = self.api.getOrderBook(product)
+        book = self.api.getOrderBook(self.product)
 
         if depth is None:
             bids = book["bids"]
@@ -315,7 +208,15 @@ class ProductFeatures:
             asks = book["asks"][0:depth]
 
         return bids, asks
-
+    
+    @property
+    def stock_position(self) -> float:
+        return self.sell_balance * self.mid_point * self.bot_price
+    
+    @property
+    def cash_position(self) -> float:
+        return self.sell_balance * self.bot_price
+    
     def getProductState(self):
         mid_point = self.mid_point
         bot_price = self.bot_price
@@ -326,9 +227,9 @@ class ProductFeatures:
         normalized_buy_size = self.buy_size * (bot_price)
         normalized_sell_size = self.sell_size * (mid_point * bot_price)
 
-        nomralized_buy_balance = self.buy_balance * (bot_price)
-        normalized_sell_balance = self.sell_balance * (mid_point * bot_price)
-
+        nomralized_buy_balance = self.cash_position
+        normalized_sell_balance = self.stock_position
+        
         starting_point = self.starting_point
 
         normalized_time_remaining = self.time_remaining / self.session_length
@@ -392,3 +293,113 @@ class ProductFeatures:
 
         if "id" in sell_order:
             self.orders.append(sell_order["id"])
+            
+class Environment:
+    def __init__(
+        self, 
+        start_time: datetime, 
+        end_time: datetime, 
+        api: CoinbaseAPI, 
+        products: str, 
+        product_features: List[ProductFeatures],
+        session_length: int = 3600, 
+        penalty: float = 0.005,
+    ) -> None:
+        assert product_features
+        self.start_time = start_time
+        self.end_time = end_time
+        self.api = api
+        self.products = products
+        self.product_features = product_features
+        self.product_names = set()
+        for productFeatures in product_features:
+            p1, p2 = productFeatures.product.split("-")
+            self.product_names.add(p1)
+            self.product_names.add(p2)
+        self.penalty = penalty
+        self.session_length = session_length
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.old_total = 0
+        self.gamma = 0.3
+        self.pos_pnl = 0
+
+    def setup(self) -> List[State]:
+        api = self.api
+        api.updateAvail()
+        api.updateBalance()
+
+        fees = api.getFees()
+
+        maker_fee = float(fees["maker_fee_rate"])
+        taker_fee = float(fees["taker_fee_rate"])
+
+        self.start_time = self.last_update_time = datetime.now()
+        self.end_time = self.start_time+timedelta(seconds=self.session_length)
+        state = []
+        self.old_total = self.api.balance["USD"]
+        
+        for productFeatures in self.product_features:
+            product_state, _ = productFeatures.update(maker_fee,taker_fee,self.last_update_time,api,True)
+            
+            state.append(product_state)
+            
+            self.old_total += productFeatures.stock_position
+            
+        self.starting_total = self.old_total
+        
+        return state
+
+    def step(self) -> Tuple(List[State], List[float], List[int]):
+        api = self.api
+        api.updateAvail()
+        api.updateBalance()
+        
+        fees = api.getFees()
+        
+        maker_fee = float(fees["maker_fee_rate"])
+        taker_fee = float(fees["taker_fee_rate"])
+        
+        new_update_time = datetime.now()
+        done = 0
+
+        if (new_update_time - self.start_time).total_seconds() > self.session_length:
+            done = 1
+
+        state = []
+
+        reward = [0 for _ in range(len(self.products))]
+        new_total = self.api.balance["USD"]
+        
+
+        for productFeatures in self.product_features:
+           
+
+            new_state, pos_pnl = productFeatures.update(
+                maker_fee, taker_fee, new_update_time, api
+            )
+            
+            
+            self.pos_pnl = pos_pnl * self.gamma + (1 - self.gamma) * self.pos_pnl
+            new_total += productFeatures.stock_position
+            state.append(new_state)
+
+        self.last_update_time = new_update_time
+        
+        n = len(self.products)
+        log_returns = np.log(new_total) - np.log(self.old_total)
+        reward = log_returns - pos_pnl
+
+        self.old_total = new_total
+
+        return state, [reward for _ in range(n)], [done for _ in range(n)]
+
+    def act(self, actions):
+
+        for i, action in enumerate(actions):
+
+            productFeatues = self.product_features[ i]
+
+            productFeatues.act(action)
+
+
+
