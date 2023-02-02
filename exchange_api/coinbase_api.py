@@ -122,11 +122,12 @@ class CoinbaseAPI(ExchangeAPI):
 
     def getAvail(self):
         r = requests.get(self.api_url + "accounts", auth=self.auth)
+        print(r)
         return {item["currency"]: float(item["available"]) for item in r.json()}
 
     def getBalance(self):
         r = requests.get(self.api_url + "accounts", auth=self.auth)
-
+        print(r)
         return {item["currency"]: float(item["balance"]) for item in r.json()}
 
     def placeOrder(self, size, price, side, product):
