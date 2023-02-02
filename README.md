@@ -1,7 +1,7 @@
 # coinbase-rl
 A reinforcement learning framework for market making on Coinbase. The framework is something I came up with to turn the market information into an RL enviroment.
 
-The Agent is implement using D3PG and SWA. 
+The Agent is implemented using D3PG and SWA. 
 
 Currently WIP to do:
   - add tests for classes 
