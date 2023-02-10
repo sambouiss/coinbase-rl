@@ -1,7 +1,7 @@
 import datetime
 from typing import Optional
 import config
-from agent import Agent, MetricLogger
+from agent.agent import Agent, MetricLogger
 from environment.env import Environment
 from exchange_api.coinbase_api import CoinbaseAPI
 import torch
@@ -75,6 +75,8 @@ parser.add_argument("--check_point",
                     default = agent.config.check_point,
                     help="Optional path to checkpoint default is none.")
 
+args = parser.parse_args()
+
 loss_actor = []
 loss_critic = []
 loss_alpha = []
@@ -109,7 +111,7 @@ if __name__ == "__main__":
         "%Y-%m-%dT%H-%M-%S"
     )
     save_dir.mkdir(parents=True)
-    rl_agent = Agent(state_dim, action_dim, save_dir)
+    rl_agent = Agent(state_dim, action_dim, save_dir, args)
 
     checkpoint = None
     if checkpoint is not None:
@@ -133,8 +135,11 @@ if __name__ == "__main__":
 
             try:
                 state = env.setup()
-            except:
+            except Exception as ex:
                 state = env.setup()
+                print("Something went wrong probably a connection issue")
+                print(ex)
+                
 
             while True:
                 print(state)
@@ -144,9 +149,11 @@ if __name__ == "__main__":
                 time.sleep(0.5)
                 try:
                     next_state, reward, done = env.step()
-                except:
+                except Exception as ex:
                     time.sleep(0.5)
                     next_state, reward, done = env.step()
+                    print("Something went wrong probably a connection issue")
+                    print(ex)
 
                 rl_agent.cache(state, next_state, action, reward, done)
 
