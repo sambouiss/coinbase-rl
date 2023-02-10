@@ -15,7 +15,7 @@ Action = namedtuple("Action", ["bid_offset", "bid_prop", "ask_offset", "ask_prop
 
 
 class Agent:
-    def __init__(self, state_dim, action_dim, save_dir):
+    def __init__(self, state_dim, action_dim, save_dir, args):
 
         self.state_dim = state_dim
         self.action_dim = action_dim
@@ -23,9 +23,9 @@ class Agent:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.actor = DeterministicActorNet(
-            state_dim, action_dim, hidden_layers=256
+            state_dim, action_dim, hidden_layers=args.hidden_layers
         ).float()
-        self.critic = CriticNet(state_dim, action_dim, hidden_layers=256).float()
+        self.critic = CriticNet(state_dim, action_dim, hidden_layers=args.hidden_layers).float()
         self.actor = self.actor.to(device=self.device)
         self.critic = self.critic.to(device=self.device)
         self.target = copy.deepcopy(self.critic)
@@ -37,36 +37,42 @@ class Agent:
         self.exploration_rate_min = 0
         self.curr_step = 0
 
-        self.save_every = 1024
+        self.save_every = args.save_every
         self.gamma = 0.9
 
-        self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=0.00005)
-        self.actor_swa = SWA(self.actor_optim, swa_start=10, swa_freq=5, swa_lr=0.00005)
+        self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=args.actor_lr)
+        self.actor_swa = SWA(self.actor_optim, 
+                             swa_start=args.actor_swa_start, 
+                             swa_freq=args.actor_swa_freq,
+                             swa_lr=args.actor_swa_lr)
         self.actor_swa.defaults = self.actor_swa.optimizer.defaults
         self.actor_swa.param_groups = self.actor_swa.optimizer.param_groups
         self.actor_swa.state = self.actor_swa.optimizer.state
-        self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=0.00005)
+        self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=args.critic_lr)
         self.critic_swa = SWA(
-            self.actor_optim, swa_start=10, swa_freq=5, swa_lr=0.00005
+            self.actor_optim, 
+            swa_start=args.critic_swa_start, 
+            swa_freq=args.critic_swa_freq, 
+            swa_lr=args.critic_swa_lr
         )
         self.critic_swa.defaults = self.critic_swa.optimizer.defaults
         self.critic_swa.param_groups = self.critic_swa.optimizer.param_groups
         self.critic_swa.state = self.critic_swa.optimizer.state
         self.loss_fn = torch.nn.MSELoss()
-        self.max_grad_norm = 0.5
-        self.num_epochs = 8
-        self.burnin = 128  # min. experiences before training
-        self.learn_every = 128  # no. of experiences between updates to Q_online
-        self.sync_every = 1024  # no. of experiences between Q_target & Q_online sync
+        self.max_grad_norm = args.max_grad_norm
+        self.num_epochs = args.num_epochs
+        self.burnin = args.burnin  # min. experiences before training
+        self.learn_every = args.learn_every  # no. of experiences between updates to Q_online
+        self.sync_every = args.sync_every   # no. of experiences between Q_target & Q_online sync
         self.memory = deque(maxlen=12000)
-        self.batch_size = 128
+        self.batch_size = args.batch_size
         self.alpha = 0
         self.target_entropy = (
             -torch.prod(torch.Tensor(self.action_dim[1]).to(self.device)).float().item()
         )
         self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device).float()
         self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=0.00005)
-        self.tau = 0.3
+        self.tau = args.tau 
 
     def act(self, state):
         """

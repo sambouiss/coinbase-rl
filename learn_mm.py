@@ -1,4 +1,5 @@
 import datetime
+from typing import Optional
 import config
 from agent.agent import Agent, MetricLogger
 from environment.env import Environment
@@ -7,6 +8,74 @@ import torch
 from pathlib import Path
 import time
 import numpy as np
+import sys
+import argparse
+import agent.config
+
+parser = argparse.ArgumentParser(description="coinbase reinforcement learning framework")
+
+parser.add_argument(
+    "--actor_lr", 
+    type = float,  
+    default = agent.config.actor_lr,
+    help= "The learning rate for the actor optimizer."
+    )
+parser.add_argument(
+    "--actor_swa_lr",
+    type = float,
+    default = agent.config.actor_swa_lr,
+    help= "The Learning rate for the actor optimizer SWA."
+    )
+parser.add_argument(
+    "--actor_swa_start",
+    type = int,
+    default = agent.config.actor_swa_start,
+    help= "Number of training steps before we apply SWA to actor."
+    )
+parser.add_argument(
+    "--actor_swa_freq",
+    type = int,
+    default = agent.config.actor_swa_freq,
+    help= "Number of training steps between applying SWA to actor."
+    )
+
+parser.add_argument(
+    "--critic_lr", 
+    type = float,  
+    default= agent.config.critic_lr, 
+    help= "The learning rate for the critic optimizer."
+    )
+parser.add_argument(
+    "--critic_swa_lr", 
+    type = float,  
+    default= agent.config.critic_swa_lr,
+    help = "The learning rate for the critic optimizer SWA."
+    )
+parser.add_argument(
+    "--critic_swa_start",
+    type = int,
+    default = agent.config.critic_swa_start,
+    help= "Number of training steps before we apply SWA to critic."
+    )
+parser.add_argument(
+    "--critic_swa_freq",
+    type = int,
+    default = agent.config.critic_swa_freq,
+    help= "Number of training steps between applying SWA to critic."
+    )
+
+parser.add_argument(
+    "--hidden_size", 
+    type = float,  
+    default= agent.config.hidden_size,
+    help = "The widith of the hidden dimensions."
+    )
+parser.add_argument("--check_point", 
+                    type = Optional[str],  
+                    default = agent.config.check_point,
+                    help="Optional path to checkpoint default is none.")
+
+args = parser.parse_args()
 
 loss_actor = []
 loss_critic = []
@@ -42,18 +111,18 @@ if __name__ == "__main__":
         "%Y-%m-%dT%H-%M-%S"
     )
     save_dir.mkdir(parents=True)
-    agent = Agent(state_dim, action_dim, save_dir)
+    rl_agent = Agent(state_dim, action_dim, save_dir, args)
 
     checkpoint = None
     if checkpoint is not None:
-        agent.actor.load_state_dict(checkpoint["actor"])
-        agent.critic.load_state_dict(checkpoint["critic"])
-        agent.target.load_state_dict(checkpoint["critic_target"])
-        agent.exploration_rate = checkpoint["exploration_rate"]
-        agent.actor_optim.load_state_dict(checkpoint["actor_optim"])
-        agent.critic_optim.load_state_dict(checkpoint["critic_optim"])
-        agent.actor_swa.load_state_dict(checkpoint["actor_swa"])
-        agent.critic_swa.load_state_dict(checkpoint["critic_swa"])
+        rl_agent.actor.load_state_dict(checkpoint["actor"])
+        rl_agent.critic.load_state_dict(checkpoint["critic"])
+        rl_agent.target.load_state_dict(checkpoint["critic_target"])
+        rl_agent.exploration_rate = checkpoint["exploration_rate"]
+        rl_agent.actor_optim.load_state_dict(checkpoint["actor_optim"])
+        rl_agent.critic_optim.load_state_dict(checkpoint["critic_optim"])
+        rl_agent.actor_swa.load_state_dict(checkpoint["actor_swa"])
+        rl_agent.critic_swa.load_state_dict(checkpoint["critic_swa"])
 
     logger = MetricLogger(save_dir)
 
@@ -66,24 +135,29 @@ if __name__ == "__main__":
 
             try:
                 state = env.setup()
-            except:
+            except Exception as ex:
                 state = env.setup()
+                print("Something went wrong probably a connection issue")
+                print(ex)
+                
 
             while True:
                 print(state)
-                action = agent.act(state)
+                action = rl_agent.act(state)
 
                 env.act(action)
                 time.sleep(0.5)
                 try:
                     next_state, reward, done = env.step()
-                except:
+                except Exception as ex:
                     time.sleep(0.5)
                     next_state, reward, done = env.step()
+                    print("Something went wrong probably a connection issue")
+                    print(ex)
 
-                agent.cache(state, next_state, action, reward, done)
+                rl_agent.cache(state, next_state, action, reward, done)
 
-                actor_loss, critic_loss, alpha_loss = agent.learn()
+                actor_loss, critic_loss, alpha_loss = rl_agent.learn()
 
                 rewards_sum += np.mean(reward)
                 logger.log_step(np.mean(reward), actor_loss, critic_loss)
@@ -99,7 +173,7 @@ if __name__ == "__main__":
                 if done[0]:
                     break
 
-                step = agent.curr_step
+                step = rl_agent.curr_step
 
                 if step % 20 == 0:
 
@@ -120,5 +194,5 @@ if __name__ == "__main__":
             logger.log_episode()
             if e % 3 == 0:
                 logger.record(
-                    episode=e, epsilon=agent.exploration_rate, step=agent.curr_step
+                    episode=e, epsilon=rl_agent.exploration_rate, step=rl_agent.curr_step
                 )
