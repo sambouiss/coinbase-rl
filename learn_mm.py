@@ -1,16 +1,18 @@
+import argparse
 import datetime
+import sys
+import time
+from pathlib import Path
 from typing import Optional
+
+import numpy as np
+import torch
+
+import agent.config
 import config
-from agent.agent import Agent, MetricLogger
+from agent.Agent import Agent, MetricLogger
 from environment.env import Environment
 from exchange_api.coinbase_api import CoinbaseAPI
-import torch
-from pathlib import Path
-import time
-import numpy as np
-import sys
-import argparse
-import agent.config
 
 parser = argparse.ArgumentParser(description="coinbase reinforcement learning framework")
 
